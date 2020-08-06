@@ -1,0 +1,13 @@
+[package]
+build="build.rs"
+name = "rust_and_cmake"
+version = "0.1.0"
+authors = ["阿男 <l.weinan@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[build-dependencies]
+cmake = "0.1.31"
