@@ -63,3 +63,7 @@ Process 7294 stopped
    6   	}
 Target 0: (rust_and_cmake) stopped.
 ```
+
+## Shared Library Sample Project
+
+* [Sample of building C based dynamic library with CMAKE and Rust main code to use the library.](https://github.com/liweinan/rust_and_cmake_dyn)
