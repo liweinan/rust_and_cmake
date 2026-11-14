@@ -1,7 +1,8 @@
-// #[link] 是属性，写在紧跟着的 extern 块上。
+// #[link] 是属性，写在紧跟着的 extern 块上。它会让 rustc 加上 -l static=foo。
 // name = "foo" 对应库文件名 libfoo.a：Linux 静态库是 lib + 名字 + .a。
 // kind = "static" 表示链接期把库收进可执行文件，运行时不再打开 libfoo.so。
-// 到哪个目录找这个库，由 build.rs 的 cargo:rustc-link-search 决定，这里是 ../c/build。
+// 库不在系统目录里。根目录 Makefile 用 cargo rustc -- -L native=.../c/build
+// 把搜索路径传给 rustc。项目里没有 build.rs。
 #[link(name = "foo", kind = "static")]
 // extern "C" 用 C 的调用约定声明函数，不生成 Rust 名字修饰。
 // 块里只有声明。函数体在 c/foo.c 的 testcall，参数 float 对应 Rust 的 f32。

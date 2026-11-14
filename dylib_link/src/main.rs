@@ -1,8 +1,9 @@
-// #[link] 是属性，写在紧跟着的 extern 块上。
+// #[link] 是属性，写在紧跟着的 extern 块上。它会让 rustc 加上 -l dylib=foo。
 // name = "foo" 对应库文件名 libfoo.so：Linux 共享库是 lib + 名字 + .so。
 // kind = "dylib" 表示可执行文件只记下库名，进程启动时由动态链接器打开 libfoo.so。
-// 搜索路径仍由 build.rs 给出（../c/build）。运行时还要把该目录放进 LD_LIBRARY_PATH，
-// 见 scripts/run.sh。静态链接的对照在 static_link，那边 kind 是 "static"。
+// 库不在系统目录里。根目录 Makefile 用 cargo rustc -- -L native=.../c/build
+// 把搜索路径传给 rustc。运行时还要把该目录放进 LD_LIBRARY_PATH，见 scripts/run.sh。
+// 静态链接的对照在 static_link，那边 kind 是 "static"。项目里没有 build.rs。
 #[link(name = "foo", kind = "dylib")]
 // extern "C" 用 C 的调用约定声明函数，不生成 Rust 名字修饰。
 // 块里只有声明。函数体在 c/foo.c 的 testcall，参数 float 对应 Rust 的 f32。

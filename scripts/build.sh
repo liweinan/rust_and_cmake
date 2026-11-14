@@ -1,12 +1,11 @@
 #!/bin/sh
-# 先编 C 库，再让 Cargo 链接。CPU 架构就是当前容器的架构。
+# 进入仓库根目录，执行根目录的 Makefile。
+# Makefile 先 make -C c，再对两个 crate 执行 cargo rustc。
+# 没有 build.rs。CPU 架构就是当前容器的架构。
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 
-echo "== 1. make: libfoo.a 与 libfoo.so =="
-make -C c
-
-echo "== 2. cargo build =="
-cargo build --workspace
+echo "== make：libfoo，然后 cargo rustc =="
+make

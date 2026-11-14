@@ -1,3 +1,15 @@
+# Cargo 编译产物
 /target
+
+# make 编出的 libfoo.a / libfoo.so
 /c/build
-.idea
+
+# RustRover / CLion
+.idea/
+cmake-build-*/
+
+# 系统与编辑器
+.DS_Store
+*.swp
+*~
+**/*.rs.bk
