@@ -1,69 +1,69 @@
-## USAGE
+Rust 链接同一份 C 库：静态库和共享库。构建在 Linux 容器里完成，脚本不区分 x86 和 arm。
 
-```bash
-$ cargo clean                                                                                                                                                                                                                   15:25:02
-$ cargo build                                                                                                                                                                                                                   15:26:52
-   Compiling cc v1.0.58
-   Compiling cmake v0.1.44
-   Compiling rust_and_cmake v0.1.0 (/Users/weli/works/rust_and_cmake)
-    Finished dev [unoptimized + debuginfo] target(s) in 2.34s
-$ cargo run                                                                                                                                                                                                                     15:26:55
-    Finished dev [unoptimized + debuginfo] target(s) in 0.01s
-     Running `target/debug/rust_and_cmake`
-Hello, world from Rust!
-Hello, world from C! Value passed: 3.141590
+```text
+c/foo.c              C 函数 testcall
+c/Makefile           make 产出 libfoo.a 和 libfoo.so
+static_link/         cargo 静态链接 libfoo.a
+dylib_link/          cargo 动态链接 libfoo.so
+scripts/build.sh     make，然后 cargo build
+scripts/run.sh       设置 LD_LIBRARY_PATH 后运行两个程序
 ```
 
-## DEBUG
+`build.rs` 只告诉链接器库在 `c/build`，不编译 C。
+
+先做出镜像。CPU 由 `--platform` 决定，镜像里的脚本相同。
 
 ```bash
-$ cd target/debug/                                                                                                                                                                                          15:31:19
-$ ls                                                                                                                                                                                                        15:31:21
-build/               deps/                examples/            incremental/         rust_and_cmake*      rust_and_cmake.d     rust_and_cmake.dSYM@
-$ lldb rust_and_cmake                                                                                                                                                                                       15:31:21
-(lldb) target create "rust_and_cmake"
-Current executable set to '/Users/weli/works/rust_and_cmake/target/debug/rust_and_cmake' (x86_64).
-(lldb) list
-   7   	fn main() {
-   8   	    println!("Hello, world from Rust!");
-   9
-   10  	    // calling the function from foo library
-   11  	    unsafe {
-   12  	        testcall(3.14159);
-   13  	    };
-   14  	}
-(lldb) b 12
-Breakpoint 1: where = rust_and_cmake`rust_and_cmake::main::hb3a365e76c289cd7 + 72 at main.rs:12:9, address = 0x0000000100000a98
-(lldb) run
-Process 7294 launched: '/Users/weli/works/rust_and_cmake/target/debug/rust_and_cmake' (x86_64)
-Hello, world from Rust!
-Process 7294 stopped
-* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 1.1
-    frame #0: 0x0000000100000a98 rust_and_cmake`rust_and_cmake::main::hb3a365e76c289cd7 at main.rs:12:9
-   9
-   10  	    // calling the function from foo library
-   11  	    unsafe {
--> 12  	        testcall(3.14159);
-   13  	    };
-   14  	}
-Target 0: (rust_and_cmake) stopped.
-(lldb) b testcall
-Breakpoint 2: where = rust_and_cmake`testcall + 13 at foo.c:5:55, address = 0x0000000100000b3d
-(lldb) run
-There is a running process, kill it and restart?: [Y/n] n
-(lldb) c
-Process 7294 resuming
-Process 7294 stopped
-* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 2.1
-    frame #0: 0x0000000100000b3d rust_and_cmake`testcall(value=3.14159012) at foo.c:5:55
-   2
-   3   	// https://flames-of-code.netlify.app/blog/rust-and-cmake/
-   4   	void testcall(float value) {
--> 5   	    printf("Hello, world from C! Value passed: %f\n", value);
-   6   	}
-Target 0: (rust_and_cmake) stopped.
+docker build --platform linux/arm64 -t rust-and-cmake:arm64 .
+docker build --platform linux/amd64 -t rust-and-cmake:amd64 .
 ```
 
-## Shared Library Sample Project
+镜像构建时会自动跑一遍 `scripts/build.sh` 和 `scripts/run.sh`。不进容器、只看运行结果：
 
-* [Sample of building C based dynamic library with CMAKE and Rust main code to use the library.](https://github.com/liweinan/rust_and_cmake_dyn)
+```bash
+docker run --rm rust-and-cmake:arm64
+```
+
+要自己在容器里再走一遍构建，用 `bash` 盖掉默认命令。工作目录是 `/src`。
+
+```bash
+docker run --rm -it rust-and-cmake:arm64 bash
+```
+
+容器里：
+
+```bash
+make -C c clean
+./scripts/build.sh
+./scripts/run.sh
+```
+
+`scripts/build.sh` 就是两步：`make -C c` 得到 `c/build/libfoo.a` 和 `c/build/libfoo.so`，然后 `cargo build --workspace`。`scripts/run.sh` 把 `c/build` 放进 `LD_LIBRARY_PATH`，再运行 `target/debug/static_link` 和 `target/debug/dylib_link`。
+
+amd64 镜像同样进入，把标签换成 `rust-and-cmake:amd64`。
+
+## 构建之后文件在哪
+
+路径都相对容器里的 `/src`。`make -C c` 的产物在 `c/build`，`cargo build` 的产物在 `target/debug`。
+
+```text
+c/build/foo.o                 gcc -c 得到的目标文件
+c/build/libfoo.a              静态库。static_link 链接时被打进可执行文件
+c/build/libfoo.so             共享库。dylib_link 运行时按 LD_LIBRARY_PATH 加载
+
+target/debug/static_link      可执行文件，静态链接了 libfoo.a
+target/debug/dylib_link       可执行文件，动态链接 libfoo.so
+target/debug/static_link.d    文本依赖清单，不是动态库
+target/debug/dylib_link.d     同上，对应 dylib_link
+target/debug/build/           build.rs 编出来的构建脚本，以及它的输出
+target/debug/incremental/     rustc 增量编译缓存
+target/debug/examples/        Cargo 建的目录。这个项目没有 example，所以是空的
+```
+
+`.d` 是 rustc 写给 Cargo 的依赖列表，格式和 make 的依赖文件一样。例如 `target/debug/dylib_link.d` 里是一行：这个可执行文件依赖哪些源文件（`main.rs`、`build.rs`、`c/foo.c`、`c/Makefile`）。这些路径来自源码本身，以及 `build.rs` 里的 `cargo:rerun-if-changed`。Linux 动态库是 `c/build/libfoo.so`。
+
+`target/debug/build/static_link/` 和 `target/debug/build/dylib_link/` 下面还有构建脚本自己的 `.d`（`build_script_build.d`）。那是「build.rs 依赖哪些文件」，同样是文本。
+
+## CI
+
+[.github/workflows/build.yml](.github/workflows/build.yml) 在 `ubuntu-24.04` 和 `ubuntu-24.04-arm` 上各跑一次 `docker build`。镜像构建过程会执行 `scripts/build.sh` 和 `scripts/run.sh`，任一步失败则这次 CI 失败。
