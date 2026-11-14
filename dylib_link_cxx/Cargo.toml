@@ -1,0 +1,5 @@
+[package]
+name = "dylib_link_cxx"
+version = "0.1.0"
+authors = ["阿男 <l.weinan@gmail.com>"]
+edition = "2018"

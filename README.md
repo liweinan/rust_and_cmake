@@ -1,23 +1,35 @@
-Rust 链接同一份 C 库：静态库和共享库。构建在 Linux 容器里完成，脚本不区分 x86 和 arm。没有 `build.rs`。
+Rust 链接同一份 C 库，以及一份用 C ABI 导出的 C++ 库。每种库都有静态链接和动态链接。构建在 Linux 容器里完成，脚本不区分 x86 和 arm。没有 `build.rs`。
 
 ```text
 c/foo.c              C 函数 testcall
 c/Makefile           编出 libfoo.a 和 libfoo.so
-Makefile             先调用 c/Makefile，再 cargo rustc，用 -L 指出库目录
-static_link/         #[link(kind = "static")]，链接 libfoo.a
-dylib_link/          #[link(kind = "dylib")]，链接 libfoo.so
+cxx/bar.cpp          C++ 类 PassedValue，用 extern "C" 导出 testcall_cxx
+cxx/Makefile         编出 libbar.a 和 libbar.so
+Makefile             先编两个库，再 cargo rustc
+static_link/         静态链接 libfoo.a
+dylib_link/          动态链接 libfoo.so
+static_link_cxx/     静态链接 libbar.a，并加上 -lstdc++
+dylib_link_cxx/      动态链接 libbar.so
 scripts/build.sh     在仓库根目录执行 make
-scripts/run.sh       设置 LD_LIBRARY_PATH 后运行两个程序
+scripts/run.sh       设置 LD_LIBRARY_PATH 后运行四个程序
 ```
 
-`#[link]` 告诉 rustc 链 `libfoo.a` 还是 `libfoo.so`。库在 `c/build`，不在系统路径里，所以 Makefile 里是：
+`#[link]` 告诉 rustc 链哪一个库、用静态还是共享。库不在系统路径里，搜索路径由 `cargo rustc -- -L` 传入。
 
 ```text
 cargo rustc -p static_link -- -L native=$(CURDIR)/c/build
 cargo rustc -p dylib_link -- -L native=$(CURDIR)/c/build
+cargo rustc -p static_link_cxx -- -L native=$(CURDIR)/cxx/build -C link-arg=-lstdc++
+cargo rustc -p dylib_link_cxx -- -L native=$(CURDIR)/cxx/build
 ```
 
-`--` 后面的参数只传给这个包的 rustc。`-L native=...` 相当于链接器的库搜索路径。
+`--` 后面的参数只传给这个包的 rustc。
+
+## C++ 和 C 的边界
+
+Rust 调用 `testcall_cxx` 的写法和调用 `testcall` 相同：`extern "C"` 加上 `#[link]`。稳定的部分是平台的 C ABI。C++ 类 `PassedValue`、`std::string` 和异常都留在 `cxx/bar.cpp` 里。`extern "C"` 让导出的符号名就是 `testcall_cxx`，不做 C++ 名字改写。异常在这个函数里接住，不传给 Rust。
+
+`libbar.a` 是目标文件的归档，不会记下对 `libstdc++` 的依赖，所以静态链接要在命令末尾加 `-lstdc++`。`libbar.so` 由 `g++ -shared` 生成，自己已经依赖 `libstdc++.so`。
 
 先做出镜像。CPU 由 `--platform` 决定，镜像里的脚本相同。
 
@@ -46,28 +58,30 @@ make clean
 ./scripts/run.sh
 ```
 
-`scripts/build.sh` 执行根目录的 `make`：`c/Makefile` 得到 `c/build/libfoo.a` 和 `c/build/libfoo.so`，然后两次 `cargo rustc`。`scripts/run.sh` 把 `c/build` 放进 `LD_LIBRARY_PATH`，再运行 `target/debug/static_link` 和 `target/debug/dylib_link`。
-
 amd64 镜像同样进入，把标签换成 `rust-and-cmake:amd64`。
 
 ## 构建之后文件在哪
 
-路径都相对容器里的 `/src`。`make -C c` 的产物在 `c/build`，`cargo rustc` 的产物在 `target/debug`。
+路径都相对容器里的 `/src`。
 
 ```text
-c/build/foo.o                 gcc -c 得到的目标文件
-c/build/libfoo.a              静态库。static_link 链接时被打进可执行文件
-c/build/libfoo.so             共享库。dylib_link 运行时按 LD_LIBRARY_PATH 加载
+c/build/foo.o                    gcc -c 得到的目标文件
+c/build/libfoo.a                 C 静态库
+c/build/libfoo.so                C 共享库
+cxx/build/bar.o                  g++ -c 得到的目标文件
+cxx/build/libbar.a               C++ 静态库
+cxx/build/libbar.so              C++ 共享库
 
-target/debug/static_link      可执行文件，静态链接了 libfoo.a
-target/debug/dylib_link       可执行文件，动态链接 libfoo.so
-target/debug/static_link.d    文本依赖清单，不是动态库
-target/debug/dylib_link.d     同上，对应 dylib_link
-target/debug/incremental/     rustc 增量编译缓存
-target/debug/examples/        Cargo 建的目录。这个项目没有 example，所以是空的
+target/debug/static_link         静态链接了 libfoo.a
+target/debug/dylib_link          动态链接 libfoo.so
+target/debug/static_link_cxx     静态链接了 libbar.a
+target/debug/dylib_link_cxx      动态链接 libbar.so
+target/debug/*.d                 rustc 的文本依赖清单，不是动态库
+target/debug/incremental/        rustc 增量编译缓存
+target/debug/examples/           Cargo 建的空目录。这个项目没有 example
 ```
 
-`.d` 是 rustc 写给 Cargo 的依赖列表，格式和 make 的依赖文件一样。例如 `target/debug/dylib_link.d` 里写着这个可执行文件依赖 `dylib_link/src/main.rs`。Linux 动态库是 `c/build/libfoo.so`，不在 `target/debug` 里。
+`.d` 里写着对应的可执行文件依赖哪份 `main.rs`。Linux 动态库是 `c/build/libfoo.so` 和 `cxx/build/libbar.so`。
 
 ## CI
 

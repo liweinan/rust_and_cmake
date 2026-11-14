@@ -1,8 +1,9 @@
 # Cargo 编译产物
 /target
 
-# make 编出的 libfoo.a / libfoo.so
+# make 编出的 libfoo / libbar
 /c/build
+/cxx/build
 
 # RustRover / CLion
 .idea/
