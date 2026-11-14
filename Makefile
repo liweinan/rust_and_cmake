@@ -2,6 +2,9 @@
 # c/Makefile 编出 libfoo.a 和 libfoo.so。
 # cxx/Makefile 编出 libbar.a 和 libbar.so。
 # cargo rustc 后面的参数原样传给 rustc。
+# rustc -L native=目录：到该目录找 lib*.a / lib*.so。native 表示系统库，不是 Rust rlib。
+# rustc -C：codegen 选项。-C link-arg=-lstdc++ 把 -lstdc++ 追加到链接命令末尾。
+# 下面的 $(MAKE) -C c 是 Make 的参数，表示进到该目录再 make，和 rustc 的 -C 无关。
 # 链静态库还是共享库，由各自 main.rs 里的 #[link] 决定。
 
 .PHONY: all libs static_link dylib_link static_link_cxx dylib_link_cxx clean
