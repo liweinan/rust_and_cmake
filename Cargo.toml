@@ -1,3 +1,9 @@
 [workspace]
-members = ["static_link", "dylib_link", "static_link_cxx", "dylib_link_cxx"]
+members = [
+    "static_link",
+    "dylib_link",
+    "static_link_cxx",
+    "dylib_link_cxx",
+    "rust_lib",
+]
 resolver = "2"

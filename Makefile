@@ -6,10 +6,12 @@
 # rustc -C：codegen 选项。-C link-arg=-lstdc++ 把 -lstdc++ 追加到链接命令末尾。
 # 下面的 $(MAKE) -C c 是 Make 的参数，表示进到该目录再 make，和 rustc 的 -C 无关。
 # 链静态库还是共享库，由各自 main.rs 里的 #[link] 决定。
+# rust_lib 用 cargo 编出 librust_lib.a 和 librust_lib.so。
+# 链接调用方的步骤在 c/Makefile、cxx/Makefile 的 call_rust 目标里。
 
-.PHONY: all libs static_link dylib_link static_link_cxx dylib_link_cxx clean
+.PHONY: all libs static_link dylib_link static_link_cxx dylib_link_cxx rust_lib call_rust clean
 
-all: static_link dylib_link static_link_cxx dylib_link_cxx
+all: static_link dylib_link static_link_cxx dylib_link_cxx call_rust
 
 libs:
 	$(MAKE) -C c
@@ -29,6 +31,14 @@ static_link_cxx: libs
 # libbar.so 在 g++ -shared 时已经依赖 libstdc++.so。
 dylib_link_cxx: libs
 	cargo rustc -p dylib_link_cxx -- -L native=$(CURDIR)/cxx/build
+
+# crate-type 同时是 staticlib 和 cdylib。
+rust_lib:
+	cargo build -p rust_lib
+
+call_rust: rust_lib
+	$(MAKE) -C c call_rust RUST_LIB_DIR=$(CURDIR)/target/debug
+	$(MAKE) -C cxx call_rust RUST_LIB_DIR=$(CURDIR)/target/debug
 
 clean:
 	$(MAKE) -C c clean

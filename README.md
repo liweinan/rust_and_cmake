@@ -3,16 +3,19 @@ Rust 链接同一份 C 库，以及一份用 C ABI 导出的 C++ 库。每种库
 ```text
 c/scale.h            结构体 ScaleArgs，C 和 C++ 共用这份布局
 c/foo.c              testcall，以及用指针传入 ScaleArgs 的 testcall_scale
-c/Makefile           编出 libfoo.a 和 libfoo.so
+c/Makefile           编出 libfoo.a、libfoo.so，以及 call_rust、call_rust_static
 cxx/bar.cpp          C++ 类 PassedValue，用 extern "C" 导出 testcall_cxx 和 testcall_scale_cxx
-cxx/Makefile         编出 libbar.a 和 libbar.so
-Makefile             先编两个库，再 cargo rustc
+cxx/Makefile         编出 libbar.a、libbar.so，以及 call_rust_cxx、call_rust_static
+Makefile             先编两个库，再 cargo rustc，再进入 c/ 和 cxx/ 链接 rust_lib
 static_link/         静态链接 libfoo.a
 dylib_link/          动态链接 libfoo.so
 static_link_cxx/     静态链接 libbar.a，并加上 -lstdc++
 dylib_link_cxx/      动态链接 libbar.so
+rust_lib/             cargo 编出 librust_lib.a 和 librust_lib.so，导出 rust_scale
+c/call_rust.c        C 程序，分别静态、动态链接 librust_lib
+cxx/call_rust.cpp    C++ 程序，分别静态、动态链接 librust_lib
 scripts/build.sh     在仓库根目录执行 make
-scripts/run.sh       设置 LD_LIBRARY_PATH 后运行四个程序
+scripts/run.sh       设置 LD_LIBRARY_PATH 后运行八个程序
 ```
 
 `#[link]` 告诉 rustc 链哪一个库、用静态还是共享。库不在系统路径里，搜索路径由 `cargo rustc -- -L` 传入。
@@ -43,6 +46,20 @@ Rust 调用 `testcall_cxx` 的写法和调用 `testcall` 相同：`extern "C"` �
 `c/scale.h` 里的 `ScaleArgs` 有两个字段：`float value` 和 `int times`。Rust 用 `#[repr(C)]` 按同样的顺序摆放，类型写成 `f32` 和 `i32`。Linux 的 LP64 上 `int` 是 32 位。
 
 `testcall_scale` 和 `testcall_scale_cxx` 接收 `const ScaleArgs *` 与 `float *`。Rust 把 `&args`、`&mut product` 传进去，库把 `value * times` 写回这块 `float`。任一指针为空时函数返回 `-1`，不写结果。C++ 类仍然留在 `bar.cpp` 里面。
+
+## C 和 C++ 调用 Rust 库
+
+`rust_lib` 的 `crate-type` 是 `staticlib` 和 `cdylib`。`cargo build -p rust_lib` 得到 `target/debug/librust_lib.a` 和 `librust_lib.so`。导出函数是 `#[no_mangle] pub extern "C" fn rust_scale`，符号名就是 `rust_scale`。
+
+C 程序 [`c/call_rust.c`](c/call_rust.c) 和 C++ 程序 [`cxx/call_rust.cpp`](cxx/call_rust.cpp) 都声明这个函数，并把 `ScaleArgs` 的指针传进去。链接步骤在 `c/Makefile` 和 `cxx/Makefile` 的 `call_rust` 目标里，不放进这两个目录的 `all`，所以编 `libfoo`、`libbar` 时还不会去找 Rust 库。根目录先编出 Rust 库，再把 `target/debug` 的绝对路径传进子目录：
+
+```text
+cargo build -p rust_lib
+$(MAKE) -C c call_rust RUST_LIB_DIR=$(CURDIR)/target/debug
+$(MAKE) -C cxx call_rust RUST_LIB_DIR=$(CURDIR)/target/debug
+```
+
+在容器里 `$(CURDIR)` 是 `/src`，所以传下去的路径是 `/src/target/debug`。动态链接写 `-L target/debug -l:librust_lib.so`，可执行文件里只记下 `librust_lib.so` 这个名字。静态链接把 `librust_lib.a` 的路径写进命令。运行动态链接的那两个程序时，`scripts/run.sh` 把 `target/debug` 放进 `LD_LIBRARY_PATH`。
 
 ## 接口标准
 
@@ -108,6 +125,12 @@ target/debug/static_link         静态链接了 libfoo.a
 target/debug/dylib_link          动态链接 libfoo.so
 target/debug/static_link_cxx     静态链接了 libbar.a
 target/debug/dylib_link_cxx      动态链接 libbar.so
+target/debug/librust_lib.a      Rust 静态库，符号 rust_scale
+target/debug/librust_lib.so     Rust 共享库，符号 rust_scale
+c/build/call_rust               C 动态链接 librust_lib.so
+c/build/call_rust_static        C 静态链接 librust_lib.a
+cxx/build/call_rust_cxx         C++ 动态链接 librust_lib.so
+cxx/build/call_rust_static      C++ 静态链接 librust_lib.a
 target/debug/*.d                 rustc 的文本依赖清单，不是动态库
 target/debug/incremental/        rustc 增量编译缓存
 target/debug/examples/           Cargo 建的空目录。这个项目没有 example
