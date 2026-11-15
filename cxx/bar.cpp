@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <string>
 
+#include "../c/scale.h"
+
 // PassedValue 只存在于这个 C++ 库里。Rust 不声明这个类。
 class PassedValue {
 public:
@@ -11,6 +13,7 @@ public:
 
     void print() const {
         printf("%s%f\n", label_.c_str(), value_);
+        fflush(stdout);
     }
 
 private:
@@ -28,5 +31,26 @@ extern "C" void testcall_cxx(float value) {
         printf("C++ exception: %s\n", error.what());
     } catch (...) {
         printf("C++ exception\n");
+    }
+}
+
+// ScaleArgs 来自 c/scale.h，布局和 Rust 的 #[repr(C)] 结构体一致。
+// 空指针返回 -1。乘法结果写入调用方的 float，不把 C++ 对象交出去。
+extern "C" int testcall_scale_cxx(const ScaleArgs *args, float *out) {
+    if (args == nullptr || out == nullptr) {
+        return -1;
+    }
+    try {
+        std::string label("Hello, world from C++! ");
+        *out = args->value * static_cast<float>(args->times);
+        printf("%s%f x %d = %f\n", label.c_str(), args->value, args->times, *out);
+        fflush(stdout);
+        return 0;
+    } catch (const std::exception& error) {
+        printf("C++ exception: %s\n", error.what());
+        return -1;
+    } catch (...) {
+        printf("C++ exception\n");
+        return -1;
     }
 }

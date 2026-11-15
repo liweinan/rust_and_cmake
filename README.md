@@ -1,9 +1,10 @@
 Rust 链接同一份 C 库，以及一份用 C ABI 导出的 C++ 库。每种库都有静态链接和动态链接。构建在 Linux 容器里完成，脚本不区分 x86 和 arm。没有 `build.rs`。
 
 ```text
-c/foo.c              C 函数 testcall
+c/scale.h            结构体 ScaleArgs，C 和 C++ 共用这份布局
+c/foo.c              testcall，以及用指针传入 ScaleArgs 的 testcall_scale
 c/Makefile           编出 libfoo.a 和 libfoo.so
-cxx/bar.cpp          C++ 类 PassedValue，用 extern "C" 导出 testcall_cxx
+cxx/bar.cpp          C++ 类 PassedValue，用 extern "C" 导出 testcall_cxx 和 testcall_scale_cxx
 cxx/Makefile         编出 libbar.a 和 libbar.so
 Makefile             先编两个库，再 cargo rustc
 static_link/         静态链接 libfoo.a
@@ -36,6 +37,12 @@ cargo rustc -p dylib_link_cxx -- -L native=$(CURDIR)/cxx/build
 Rust 调用 `testcall_cxx` 的写法和调用 `testcall` 相同：`extern "C"` 加上 `#[link]`。稳定的部分是平台的 C ABI。C++ 类 `PassedValue`、`std::string` 和异常都留在 `cxx/bar.cpp` 里。`extern "C"` 让导出的符号名就是 `testcall_cxx`，不做 C++ 名字改写。异常在这个函数里接住，不传给 Rust。
 
 `libbar.a` 是目标文件的归档，不会记下对 `libstdc++` 的依赖，所以静态链接要在命令末尾加 `-lstdc++`。`libbar.so` 由 `g++ -shared` 生成，自己已经依赖 `libstdc++.so`。
+
+## 结构体和指针
+
+`c/scale.h` 里的 `ScaleArgs` 有两个字段：`float value` 和 `int times`。Rust 用 `#[repr(C)]` 按同样的顺序摆放，类型写成 `f32` 和 `i32`。Linux 的 LP64 上 `int` 是 32 位。
+
+`testcall_scale` 和 `testcall_scale_cxx` 接收 `const ScaleArgs *` 与 `float *`。Rust 把 `&args`、`&mut product` 传进去，库把 `value * times` 写回这块 `float`。任一指针为空时函数返回 `-1`，不写结果。C++ 类仍然留在 `bar.cpp` 里面。
 
 ## 接口标准
 
