@@ -9,4 +9,12 @@ typedef struct ScaleArgs {
     int times;
 } ScaleArgs;
 
+/* 返回这个结构体本身。status 和 product 各 4 字节，一共 8 字节，中间没有补齐。
+ * 不返回指向局部变量的指针：函数返回后那块栈就不能再读。
+ */
+typedef struct ScaleResult {
+    int status;
+    float product;
+} ScaleResult;
+
 #endif

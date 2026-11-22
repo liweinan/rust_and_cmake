@@ -8,8 +8,15 @@
 // 块里只有声明。函数体在 c/foo.c。
 extern "C" {
     fn testcall(v: f32);
-    // *const / *mut 是 C 指针。空指针由 testcall_scale 返回 -1。
-    fn testcall_scale(args: *const ScaleArgs, out: *mut f32) -> i32;
+    // 参数是指针。返回值是 ScaleResult 本身，空指针时 status 为 -1。
+    fn testcall_scale(args: *const ScaleArgs) -> ScaleResult;
+    // malloc 得到的 ScaleResult。空参数返回空指针。调用方用 free 释放。
+    fn testcall_scale_alloc(args: *const ScaleArgs) -> *mut ScaleResult;
+}
+
+// free 在 libc，不在 libfoo 里。
+extern "C" {
+    fn free(ptr: *mut std::ffi::c_void);
 }
 
 // #[repr(C)] 按 C ABI 摆放字段，和 c/scale.h 里的 ScaleArgs 相同。
@@ -19,6 +26,13 @@ extern "C" {
 struct ScaleArgs {
     value: f32,
     times: i32,
+}
+
+// status 对 int，product 对 float。和 c/scale.h 的 ScaleResult 相同。
+#[repr(C)]
+struct ScaleResult {
+    status: i32,
+    product: f32,
 }
 
 fn main() {
@@ -34,11 +48,29 @@ fn main() {
         value: 3.14159,
         times: 2,
     };
-    let mut product = 0.0f32;
-    // &args 变成 *const ScaleArgs，&mut product 变成 *mut f32。
-    let status = unsafe { testcall_scale(&args, &mut product) };
-    println!("scale status: {status}, product: {product:.6}");
+    // &args 变成 *const ScaleArgs。返回的 ScaleResult 按 C ABI 放进寄存器。
+    let result = unsafe { testcall_scale(&args) };
+    println!("scale status: {}, product: {:.6}", result.status, result.product);
 
-    let null_status = unsafe { testcall_scale(std::ptr::null(), &mut product) };
-    println!("null args status: {null_status}");
+    let null_result = unsafe { testcall_scale(std::ptr::null()) };
+    println!("null args status: {}", null_result.status);
+
+    let allocated = unsafe { testcall_scale_alloc(&args) };
+    if allocated.is_null() {
+        println!("alloc status: null");
+        std::process::exit(1);
+    }
+    let status = unsafe { (*allocated).status };
+    let product = unsafe { (*allocated).product };
+    println!("alloc status: {status}, product: {product:.6}");
+    unsafe { free(allocated.cast()) };
+
+    let null_allocated = unsafe { testcall_scale_alloc(std::ptr::null()) };
+    if null_allocated.is_null() {
+        println!("null alloc: null");
+    } else {
+        unsafe { free(null_allocated.cast()) };
+        println!("null alloc: non-null");
+        std::process::exit(1);
+    }
 }

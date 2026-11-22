@@ -8,7 +8,12 @@
 // 函数体在 cxx/bar.cpp。ScaleArgs 的布局在 c/scale.h。
 extern "C" {
     fn testcall_cxx(v: f32);
-    fn testcall_scale_cxx(args: *const ScaleArgs, out: *mut f32) -> i32;
+    fn testcall_scale_cxx(args: *const ScaleArgs) -> ScaleResult;
+    fn testcall_scale_alloc_cxx(args: *const ScaleArgs) -> *mut ScaleResult;
+}
+
+extern "C" {
+    fn free(ptr: *mut std::ffi::c_void);
 }
 
 // #[repr(C)] 按 C ABI 摆放字段，和 c/scale.h 里的 ScaleArgs 相同。
@@ -17,6 +22,12 @@ extern "C" {
 struct ScaleArgs {
     value: f32,
     times: i32,
+}
+
+#[repr(C)]
+struct ScaleResult {
+    status: i32,
+    product: f32,
 }
 
 fn main() {
@@ -31,10 +42,28 @@ fn main() {
         value: 3.14159,
         times: 2,
     };
-    let mut product = 0.0f32;
-    let status = unsafe { testcall_scale_cxx(&args, &mut product) };
-    println!("scale status: {status}, product: {product:.6}");
+    let result = unsafe { testcall_scale_cxx(&args) };
+    println!("scale status: {}, product: {:.6}", result.status, result.product);
 
-    let null_status = unsafe { testcall_scale_cxx(std::ptr::null(), &mut product) };
-    println!("null args status: {null_status}");
+    let null_result = unsafe { testcall_scale_cxx(std::ptr::null()) };
+    println!("null args status: {}", null_result.status);
+
+    let allocated = unsafe { testcall_scale_alloc_cxx(&args) };
+    if allocated.is_null() {
+        println!("alloc status: null");
+        std::process::exit(1);
+    }
+    let status = unsafe { (*allocated).status };
+    let product = unsafe { (*allocated).product };
+    println!("alloc status: {status}, product: {product:.6}");
+    unsafe { free(allocated.cast()) };
+
+    let null_allocated = unsafe { testcall_scale_alloc_cxx(std::ptr::null()) };
+    if null_allocated.is_null() {
+        println!("null alloc: null");
+    } else {
+        unsafe { free(null_allocated.cast()) };
+        println!("null alloc: non-null");
+        std::process::exit(1);
+    }
 }

@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <exception>
 #include <stdio.h>
 #include <string>
@@ -34,23 +35,57 @@ extern "C" void testcall_cxx(float value) {
     }
 }
 
-// ScaleArgs 来自 c/scale.h，布局和 Rust 的 #[repr(C)] 结构体一致。
-// 空指针返回 -1。乘法结果写入调用方的 float，不把 C++ 对象交出去。
-extern "C" int testcall_scale_cxx(const ScaleArgs *args, float *out) {
-    if (args == nullptr || out == nullptr) {
-        return -1;
+// ScaleArgs 和 ScaleResult 来自 c/scale.h，布局和 Rust 的 #[repr(C)] 一致。
+// 返回值是 ScaleResult 本身。空指针时 status 为 -1。不把 C++ 对象交出去。
+extern "C" ScaleResult testcall_scale_cxx(const ScaleArgs *args) {
+    ScaleResult result{-1, 0.0f};
+    if (args == nullptr) {
+        return result;
     }
     try {
         std::string label("Hello, world from C++! ");
-        *out = args->value * static_cast<float>(args->times);
-        printf("%s%f x %d = %f\n", label.c_str(), args->value, args->times, *out);
+        result.status = 0;
+        result.product = args->value * static_cast<float>(args->times);
+        printf("%s%f x %d = %f\n", label.c_str(), args->value, args->times, result.product);
         fflush(stdout);
-        return 0;
+        return result;
     } catch (const std::exception& error) {
         printf("C++ exception: %s\n", error.what());
-        return -1;
+        result.status = -1;
+        result.product = 0.0f;
+        return result;
     } catch (...) {
         printf("C++ exception\n");
-        return -1;
+        result.status = -1;
+        result.product = 0.0f;
+        return result;
+    }
+}
+
+// 用 malloc 分配 ScaleResult，返回指针。调用方用 free 释放，不要用 delete。
+// 空参数、分配失败或异常都返回空指针。异常路径会先 free，避免漏掉这块堆内存。
+extern "C" ScaleResult *testcall_scale_alloc_cxx(const ScaleArgs *args) {
+    if (args == nullptr) {
+        return nullptr;
+    }
+    auto *result = static_cast<ScaleResult *>(std::malloc(sizeof(ScaleResult)));
+    if (result == nullptr) {
+        return nullptr;
+    }
+    try {
+        std::string label("Hello, world from C++ alloc! ");
+        result->status = 0;
+        result->product = args->value * static_cast<float>(args->times);
+        printf("%s%f x %d = %f\n", label.c_str(), args->value, args->times, result->product);
+        fflush(stdout);
+        return result;
+    } catch (const std::exception& error) {
+        printf("C++ exception: %s\n", error.what());
+        std::free(result);
+        return nullptr;
+    } catch (...) {
+        printf("C++ exception\n");
+        std::free(result);
+        return nullptr;
     }
 }

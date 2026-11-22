@@ -6,23 +6,36 @@ pub struct ScaleArgs {
     pub times: i32,
 }
 
+// 与 c/scale.h 的 ScaleResult 字段顺序一致。一共 8 字节。
+// 按值返回。空指针时 status 为 -1，product 为 0。
+#[repr(C)]
+pub struct ScaleResult {
+    pub status: i32,
+    pub product: f32,
+}
+
 // #[no_mangle] 让符号名保持 rust_scale，不使用 Rust 自己的改写。
 // extern "C" 使用目标平台的 C ABI，C 和 C++ 都能按这个名字调用。
-// 这个函数不能 panic 穿出边界。空指针直接返回 -1。
+// 这个函数不能 panic 穿出边界。
 #[no_mangle]
-pub extern "C" fn rust_scale(args: *const ScaleArgs, out: *mut f32) -> i32 {
-    if args.is_null() || out.is_null() {
-        return -1;
+pub extern "C" fn rust_scale(args: *const ScaleArgs) -> ScaleResult {
+    if args.is_null() {
+        return ScaleResult {
+            status: -1,
+            product: 0.0,
+        };
     }
-    // *const / *mut 解引用要放在 unsafe 里。调用方保证指针指向 ScaleArgs 和 float。
+    // *const 解引用要放在 unsafe 里。调用方保证指针指向 ScaleArgs。
     unsafe {
         let args = &*args;
         let product = args.value * args.times as f32;
-        *out = product;
         println!(
             "Hello, world from Rust lib! {:.6} x {} = {:.6}",
             args.value, args.times, product
         );
+        ScaleResult {
+            status: 0,
+            product,
+        }
     }
-    0
 }

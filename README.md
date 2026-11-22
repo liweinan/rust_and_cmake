@@ -43,9 +43,11 @@ Rust 调用 `testcall_cxx` 的写法和调用 `testcall` 相同：`extern "C"` �
 
 ## 结构体和指针
 
-`c/scale.h` 里的 `ScaleArgs` 有两个字段：`float value` 和 `int times`。Rust 用 `#[repr(C)]` 按同样的顺序摆放，类型写成 `f32` 和 `i32`。Linux 的 LP64 上 `int` 是 32 位。
+`c/scale.h` 里的 `ScaleArgs` 有两个字段：`float value` 和 `int times`。`ScaleResult` 有 `int status` 和 `float product`。Rust 用 `#[repr(C)]` 按同样的顺序摆放。Linux 的 LP64 上 `int` 是 32 位，两个结构体都没有补齐字节。
 
-`testcall_scale` 和 `testcall_scale_cxx` 接收 `const ScaleArgs *` 与 `float *`。Rust 把 `&args`、`&mut product` 传进去，库把 `value * times` 写回这块 `float`。任一指针为空时函数返回 `-1`，不写结果。C++ 类仍然留在 `bar.cpp` 里面。
+`testcall_scale` 和 `testcall_scale_cxx` 接收 `const ScaleArgs *`，返回 `ScaleResult` 这个结构体本身。空指针时 `status` 是 `-1`。返回指向局部变量的指针不行：函数返回后那块栈已经无效。C++ 类仍然留在 `bar.cpp` 里面。`rust_scale` 用同一份返回值。
+
+`testcall_scale_alloc` 和 `testcall_scale_alloc_cxx` 用 `malloc` 分配一块 `ScaleResult`，返回这块堆内存的指针。参数为空时返回空指针。调用方用 `free` 释放。C++ 这一份也用 `malloc`，不用 `delete`。
 
 ## C 和 C++ 调用 Rust 库
 
