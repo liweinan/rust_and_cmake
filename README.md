@@ -53,6 +53,8 @@ Rust 调用 `testcall_cxx` 的写法和调用 `testcall` 相同：`extern "C"` �
 
 `rust_lib` 的 `crate-type` 是 `staticlib` 和 `cdylib`。`cargo build -p rust_lib` 得到 `target/debug/librust_lib.a` 和 `librust_lib.so`。导出函数是 `#[no_mangle] pub extern "C" fn rust_scale`，符号名就是 `rust_scale`。
 
+`rust_scale_alloc` 用 `Box` 在 Rust 堆上分配 `ScaleResult`，再用 `Box::into_raw` 把指针交给 C 或 C++。参数为空时返回空指针。这块内存要用 `rust_scale_free` 释放，它内部是 `Box::from_raw`。不能对这个指针调用 `free` 或 `delete`。
+
 C 程序 [`c/call_rust.c`](c/call_rust.c) 和 C++ 程序 [`cxx/call_rust.cpp`](cxx/call_rust.cpp) 都声明这个函数，并把 `ScaleArgs` 的指针传进去。链接步骤在 `c/Makefile` 和 `cxx/Makefile` 的 `call_rust` 目标里，不放进这两个目录的 `all`，所以编 `libfoo`、`libbar` 时还不会去找 Rust 库。根目录先编出 Rust 库，再把 `target/debug` 的绝对路径传进子目录：
 
 ```text

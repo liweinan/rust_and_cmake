@@ -39,3 +39,35 @@ pub extern "C" fn rust_scale(args: *const ScaleArgs) -> ScaleResult {
         }
     }
 }
+
+// Box::into_raw 把堆上的 ScaleResult 交出去，指针在函数返回后仍然有效。
+// 空参数不分配，直接返回空指针。调用方必须用 rust_scale_free 释放，不能用 free。
+#[no_mangle]
+pub extern "C" fn rust_scale_alloc(args: *const ScaleArgs) -> *mut ScaleResult {
+    if args.is_null() {
+        return std::ptr::null_mut();
+    }
+    unsafe {
+        let args = &*args;
+        let product = args.value * args.times as f32;
+        println!(
+            "Hello, world from Rust lib alloc! {:.6} x {} = {:.6}",
+            args.value, args.times, product
+        );
+        Box::into_raw(Box::new(ScaleResult {
+            status: 0,
+            product,
+        }))
+    }
+}
+
+// Box::from_raw 收回 rust_scale_alloc 交出去的指针。空指针直接返回。
+#[no_mangle]
+pub extern "C" fn rust_scale_free(result: *mut ScaleResult) {
+    if result.is_null() {
+        return;
+    }
+    unsafe {
+        drop(Box::from_raw(result));
+    }
+}
