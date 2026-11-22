@@ -47,7 +47,7 @@ Rust 调用 `testcall_cxx` 的写法和调用 `testcall` 相同：`extern "C"` �
 
 `testcall_scale` 和 `testcall_scale_cxx` 接收 `const ScaleArgs *`，返回 `ScaleResult` 这个结构体本身。空指针时 `status` 是 `-1`。返回指向局部变量的指针不行：函数返回后那块栈已经无效。C++ 类仍然留在 `bar.cpp` 里面。`rust_scale` 用同一份返回值。
 
-`testcall_scale_alloc` 和 `testcall_scale_alloc_cxx` 用 `malloc` 分配一块 `ScaleResult`，返回这块堆内存的指针。参数为空时返回空指针。调用方用 `free` 释放。C++ 这一份也用 `malloc`，不用 `delete`。
+`testcall_scale_alloc` 用 `malloc` 分配一块 `ScaleResult`，调用方用 `free` 释放。`testcall_scale_alloc_cxx` 用 `std::unique_ptr` 分配，`release` 把指针交出去，调用方用 `testcall_scale_free_cxx` 里的 `delete` 收回。参数为空时都返回空指针。有析构函数的 C++ 对象不能交给 `free`。
 
 ## C 和 C++ 调用 Rust 库
 

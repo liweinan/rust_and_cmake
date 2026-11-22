@@ -1,5 +1,5 @@
-#include <cstdlib>
 #include <exception>
+#include <memory>
 #include <stdio.h>
 #include <string>
 
@@ -62,30 +62,30 @@ extern "C" ScaleResult testcall_scale_cxx(const ScaleArgs *args) {
     }
 }
 
-// 用 malloc 分配 ScaleResult，返回指针。调用方用 free 释放，不要用 delete。
-// 空参数、分配失败或异常都返回空指针。异常路径会先 free，避免漏掉这块堆内存。
+// unique_ptr 在离开作用域时 delete。release 把裸指针交出去，调用方用 testcall_scale_free_cxx 收回。
+// 空参数或异常返回空指针。异常发生在 release 之前时，unique_ptr 自己 delete。
 extern "C" ScaleResult *testcall_scale_alloc_cxx(const ScaleArgs *args) {
     if (args == nullptr) {
         return nullptr;
     }
-    auto *result = static_cast<ScaleResult *>(std::malloc(sizeof(ScaleResult)));
-    if (result == nullptr) {
-        return nullptr;
-    }
     try {
+        auto owned = std::make_unique<ScaleResult>();
         std::string label("Hello, world from C++ alloc! ");
-        result->status = 0;
-        result->product = args->value * static_cast<float>(args->times);
-        printf("%s%f x %d = %f\n", label.c_str(), args->value, args->times, result->product);
+        owned->status = 0;
+        owned->product = args->value * static_cast<float>(args->times);
+        printf("%s%f x %d = %f\n", label.c_str(), args->value, args->times, owned->product);
         fflush(stdout);
-        return result;
+        return owned.release();
     } catch (const std::exception& error) {
         printf("C++ exception: %s\n", error.what());
-        std::free(result);
         return nullptr;
     } catch (...) {
         printf("C++ exception\n");
-        std::free(result);
         return nullptr;
     }
+}
+
+// delete 空指针是空操作。有析构函数的对象必须走这里，不能用 free。
+extern "C" void testcall_scale_free_cxx(ScaleResult *result) {
+    delete result;
 }

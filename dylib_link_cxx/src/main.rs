@@ -10,10 +10,8 @@ extern "C" {
     fn testcall_cxx(v: f32);
     fn testcall_scale_cxx(args: *const ScaleArgs) -> ScaleResult;
     fn testcall_scale_alloc_cxx(args: *const ScaleArgs) -> *mut ScaleResult;
-}
-
-extern "C" {
-    fn free(ptr: *mut std::ffi::c_void);
+    // new 出来的指针。调用方用这个函数 delete，不能用 free。
+    fn testcall_scale_free_cxx(result: *mut ScaleResult);
 }
 
 // #[repr(C)] 按 C ABI 摆放字段，和 c/scale.h 里的 ScaleArgs 相同。
@@ -56,13 +54,13 @@ fn main() {
     let status = unsafe { (*allocated).status };
     let product = unsafe { (*allocated).product };
     println!("alloc status: {status}, product: {product:.6}");
-    unsafe { free(allocated.cast()) };
+    unsafe { testcall_scale_free_cxx(allocated) };
 
     let null_allocated = unsafe { testcall_scale_alloc_cxx(std::ptr::null()) };
     if null_allocated.is_null() {
         println!("null alloc: null");
     } else {
-        unsafe { free(null_allocated.cast()) };
+        unsafe { testcall_scale_free_cxx(null_allocated) };
         println!("null alloc: non-null");
         std::process::exit(1);
     }
