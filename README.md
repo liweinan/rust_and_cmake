@@ -16,6 +16,7 @@ c/call_rust.c        C 程序，分别静态、动态链接 librust_lib
 cxx/call_rust.cpp    C++ 程序，分别静态、动态链接 librust_lib
 scripts/build.sh     在仓库根目录执行 make
 scripts/run.sh       设置 LD_LIBRARY_PATH 后运行八个程序
+scripts/show-libs.sh 用 file、ar、nm、readelf 查看 libfoo.a 和 libfoo.so
 ```
 
 `#[link]` 告诉 rustc 链哪一个库、用静态还是共享。库不在系统路径里，搜索路径由 `cargo rustc -- -L` 传入。
@@ -112,6 +113,26 @@ make clean
 ```
 
 amd64 镜像同样进入，把标签换成 `rust-and-cmake:amd64`。
+
+## 在容器里查看静态库和共享库
+
+`scripts/show-libs.sh` 先执行 `make -C c`，再打印并执行查看 `c/build/libfoo.a` 和 `c/build/libfoo.so` 的命令。每条输出下面有一行「解读」。
+
+静态库是 `ar` 归档。`file` 显示 `current ar archive`，`ar t` 列出里面的 `foo.o`，`nm` 里 `U` 是还没解析的 libc 符号，`T` 是 `foo.c` 导出的函数。`readelf -d` 看不到动态段。共享库是 ELF。`file` 显示 `shared object`，`readelf -d` 里 `NEEDED` 是 `libc.so.6`，`nm -D --defined-only` 只列出导出的函数。同一组命令把路径换成 `cxx/build/libbar.a`、`libbar.so` 或 `target/debug/librust_lib.a`、`librust_lib.so` 即可。
+
+镜像构建仍只跑 `scripts/build.sh` 和 `scripts/run.sh`。`show-libs.sh` 会在下一次 `docker build` 时随源码复制进镜像，已经打开的容器看不到这次新加的文件。重新构建后，在容器里执行：
+
+```bash
+./scripts/show-libs.sh
+```
+
+不想重建镜像时，把当前仓库挂到 `/src`，用镜像里的 `file`、`ar`、`nm`、`readelf` 看这份源码编出的库：
+
+```bash
+docker run --rm -v "$(pwd)":/src -w /src rust-and-cmake:arm64 ./scripts/show-libs.sh
+```
+
+挂载会盖住镜像里原来的 `/src`。脚本会在挂载的目录里重新执行 `make -C c`。
 
 ## 构建之后文件在哪
 
