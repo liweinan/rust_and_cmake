@@ -9,7 +9,7 @@ RUN apt-get update \
 
 WORKDIR /src
 COPY . .
-RUN chmod +x scripts/build.sh scripts/run.sh \
+RUN chmod +x scripts/build.sh scripts/run.sh scripts/show-libs.sh \
     && ./scripts/build.sh \
     && ./scripts/run.sh
 

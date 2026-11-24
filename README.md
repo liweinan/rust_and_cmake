@@ -85,54 +85,39 @@ Rust 和这两个库之间的约定是目标平台的 C ABI。库文件本身是
 - [`g++ -shared`](https://gcc.gnu.org/onlinedocs/gcc/Link-Options.html) 生成 `libbar.so` 并记下它对 `libstdc++.so` 的依赖。
 - 运行时用 `LD_LIBRARY_PATH` 找到 `libfoo.so` 和 `libbar.so`，规则在 [ld.so(8)](https://man7.org/linux/man-pages/man8/ld.so.8.html)。
 
-先做出镜像。CPU 由 `--platform` 决定，镜像里的脚本相同。
+在仓库根目录构建镜像。CPU 由 `--platform` 决定，镜像里的步骤相同。
 
 ```bash
 docker build --platform linux/arm64 -t rust-and-cmake:arm64 .
 docker build --platform linux/amd64 -t rust-and-cmake:amd64 .
 ```
 
-镜像构建时会自动跑一遍 `scripts/build.sh` 和 `scripts/run.sh`。不进容器、只看运行结果：
+构建时会执行 `scripts/build.sh` 和 `scripts/run.sh`。只看运行结果：
 
 ```bash
 docker run --rm rust-and-cmake:arm64
 ```
 
-要自己在容器里再走一遍构建，用 `bash` 盖掉默认命令。工作目录是 `/src`。
+要自己再走一遍，进入容器。工作目录是 `/src`。
 
 ```bash
 docker run --rm -it rust-and-cmake:arm64 bash
 ```
 
-容器里：
+容器里按这个顺序：
 
 ```bash
 make clean
 ./scripts/build.sh
 ./scripts/run.sh
-```
-
-amd64 镜像同样进入，把标签换成 `rust-and-cmake:amd64`。
-
-## 在容器里查看静态库和共享库
-
-`scripts/show-libs.sh` 先执行 `make -C c`，再打印并执行查看 `c/build/libfoo.a` 和 `c/build/libfoo.so` 的命令。每条输出下面有一行「解读」。
-
-静态库是 `ar` 归档。`file` 显示 `current ar archive`，`ar t` 列出里面的 `foo.o`，`nm` 里 `U` 是还没解析的 libc 符号，`T` 是 `foo.c` 导出的函数。`readelf -d` 看不到动态段。共享库是 ELF。`file` 显示 `shared object`，`readelf -d` 里 `NEEDED` 是 `libc.so.6`，`nm -D --defined-only` 只列出导出的函数。同一组命令把路径换成 `cxx/build/libbar.a`、`libbar.so` 或 `target/debug/librust_lib.a`、`librust_lib.so` 即可。
-
-镜像构建仍只跑 `scripts/build.sh` 和 `scripts/run.sh`。`show-libs.sh` 会在下一次 `docker build` 时随源码复制进镜像，已经打开的容器看不到这次新加的文件。重新构建后，在容器里执行：
-
-```bash
 ./scripts/show-libs.sh
 ```
 
-不想重建镜像时，把当前仓库挂到 `/src`，用镜像里的 `file`、`ar`、`nm`、`readelf` 看这份源码编出的库：
+`make clean` 清掉 `c/build`、`cxx/build` 和 `target`。`./scripts/build.sh` 在仓库根目录执行 `make`：先编 `libfoo` 和 `libbar`，再编 `librust_lib`，然后链接八个程序。`./scripts/run.sh` 把这三个目录放进 `LD_LIBRARY_PATH`，再依次运行这八个程序。每个程序都会打出 `6.283180`。
 
-```bash
-docker run --rm -v "$(pwd)":/src -w /src rust-and-cmake:arm64 ./scripts/show-libs.sh
-```
+`./scripts/show-libs.sh` 再执行一次 `make -C c`，然后用 `file`、`ar`、`nm`、`readelf` 看 `c/build/libfoo.a` 和 `c/build/libfoo.so`。每条命令下面有一行「解读」。静态库是 `ar` 归档：`ar t` 列出 `foo.o`，`nm` 里 `U` 是还没解析的 libc 符号，`T` 是 `foo.c` 导出的函数。`readelf -d` 对这个归档打印 `There is no dynamic section in this file.` 共享库是 ELF：`readelf -d` 里 `NEEDED` 是 `libc.so.6`，`nm -D --defined-only` 只列出导出的函数。同一组命令把路径换成 `cxx/build/libbar.a`、`libbar.so` 或 `target/debug/librust_lib.a`、`librust_lib.so` 即可。
 
-挂载会盖住镜像里原来的 `/src`。脚本会在挂载的目录里重新执行 `make -C c`。
+amd64 镜像把标签换成 `rust-and-cmake:amd64`。
 
 ## 构建之后文件在哪
 
