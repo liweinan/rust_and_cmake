@@ -17,9 +17,18 @@ libs:
 	$(MAKE) -C c
 	$(MAKE) -C cxx
 
+# cargo rustc：编译这个包，并把后面的参数传给 rustc。
+# -p static_link：工作区里的包名，对应目录 static_link/。
+# --：这条横线之后只交给 rustc，cargo 自己不再解析。
+# -L native=目录：让链接器到该目录找 libfoo.a。native 表示系统库，不是 Rust rlib。
+# $(CURDIR) 是本 Makefile 所在目录，也就是仓库根目录，所以路径是绝对路径。
+# 链 libfoo.a 还是 libfoo.so，不写在这里，由 static_link/src/main.rs 的 #[link(kind = "static")] 决定。
 static_link: libs
 	cargo rustc -p static_link -- -L native=$(CURDIR)/c/build
 
+# 参数和上一条相同。-p dylib_link 编译 dylib_link/。
+# 搜索目录仍是 c/build，因为 libfoo.so 和 libfoo.a 放在一起。
+# 选中 libfoo.so 的是 dylib_link/src/main.rs 里的 #[link(kind = "dylib")]。
 dylib_link: libs
 	cargo rustc -p dylib_link -- -L native=$(CURDIR)/c/build
 

@@ -115,7 +115,13 @@ make clean
 
 `make clean` 清掉 `c/build`、`cxx/build` 和 `target`。`./scripts/build.sh` 在仓库根目录执行 `make`：先编 `libfoo` 和 `libbar`，再编 `librust_lib`，然后链接八个程序。`./scripts/run.sh` 把这三个目录放进 `LD_LIBRARY_PATH`，再依次运行这八个程序。每个程序都会打出 `6.283180`。
 
-`./scripts/show-libs.sh` 再执行一次 `make -C c`，然后用 `file`、`ar`、`nm`、`readelf` 看 `c/build/libfoo.a` 和 `c/build/libfoo.so`。每条命令下面有一行「解读」。静态库是 `ar` 归档：`ar t` 列出 `foo.o`，`nm` 里 `U` 是还没解析的 libc 符号，`T` 是 `foo.c` 导出的函数。`readelf -d` 对这个归档打印 `There is no dynamic section in this file.` 共享库是 ELF：`readelf -d` 里 `NEEDED` 是 `libc.so.6`，`nm -D --defined-only` 只列出导出的函数。同一组命令把路径换成 `cxx/build/libbar.a`、`libbar.so` 或 `target/debug/librust_lib.a`、`librust_lib.so` 即可。
+`./scripts/show-libs.sh` 再执行一次 `make -C c`，然后查看库和两个 Rust 程序。每条命令下面有一行「解读」。
+
+`libfoo.a` 是 `ar` 归档：`ar t` 列出 `foo.o`，`nm` 里 `U` 是还没解析的 libc 符号，`T` 是 `foo.c` 导出的函数。`readelf -d` 打印 `There is no dynamic section in this file.`，`ldd` 打印 `not a dynamic executable`。`libfoo.so` 是 ELF：`readelf -d` 和 `ldd` 都能看到 `libc.so.6`。
+
+`static_link` 静态链接 `libfoo.a`。`cargo rustc -v` 再加 `-C link-arg=-Wl,-t` 时，`ld` 打印它打开了 `c/build/libfoo.a`。`nm -g` 里 `testcall` 是 `T`。`readelf -d` 和 `objdump -p` 的 `NEEDED` 都没有 `libfoo.so`，`ldd` 也没有。`dylib_link` 动态链接 `libfoo.so`。同样的 `-Wl,-t` 打印它打开了 `c/build/libfoo.so`。`nm -g` 里 `testcall` 是 `U`，`objdump -T` 里是 `UND`。`readelf -d` 和 `objdump -p` 的第一条 `NEEDED` 是 `libfoo.so`。`LD_LIBRARY_PATH=c/build ldd` 把它解析到 `c/build/libfoo.so`。
+
+最后 `cc -shared -Wl,-trace` 让链接器 `ld` 打印它写共享库时打开的文件，其中有 `libc.so.6` 和 `ld-linux`。同一组查看命令把路径换成 `cxx/build/libbar.a`、`libbar.so` 或 `target/debug/librust_lib.a`、`librust_lib.so` 即可。
 
 amd64 镜像把标签换成 `rust-and-cmake:amd64`。
 
